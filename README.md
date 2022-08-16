@@ -1,6 +1,6 @@
 ![Moleculer logo](http://moleculer.services/images/banner.png)
 
-[![NPM version](https://img.shields.io/npm/v/@1xtr/moleculer-ch-logger.svg)](https://www.npmjs.com/package/@1xtr/moleculer-ch-logger) ![NPM Downloads](https://img.shields.io/npm/dw/@1xtr/moleculer-ch-logger) ![NPM License](https://img.shields.io/npm/l/@1xtr/moleculer-ch-logger)
+[![NPM version](https://img.shields.io/npm/v/@1xtr/moleculer-ch-logger.svg)](https://www.npmjs.com/package/@1xtr/moleculer-ch-logger) ![NPM Downloads](https://img.shields.io/npm/dw/@1xtr/moleculer-ch-logger) 
 
 # Moleculer logger for ClickHouse
 
