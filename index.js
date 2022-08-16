@@ -177,7 +177,7 @@ class ClickHouseLogger extends BaseLogger {
       this.queue.length = 0
       
       const data = rows.map(row => JSON.stringify({
-        timestamp: row.ts,
+        timestamp: Math.trunc(row.ts/1000),
         level: row.level,
         message: row.msg,
         nodeID: row.bindings.nodeID,
