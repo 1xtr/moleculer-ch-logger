@@ -23,8 +23,8 @@
 require('isomorphic-fetch')
 const _ = require('lodash')
 const BaseLogger = require('moleculer').Loggers.Base
-const {hostname} = require('os')
-const {inspect} = require('util')
+const { hostname } = require('os')
+const { inspect } = require('util')
 
 fetch.Promise = Promise
 const isObject = function (o) {
@@ -44,7 +44,7 @@ class ClickHouseLogger extends BaseLogger {
    * @param {ClickHouseLoggerOptions} opts
    * @memberof ClickHouseLogger
    */
-  constructor(opts= {}) {
+  constructor(opts = {}) {
     super(opts)
     /**
      * @type {ClickHouseLoggerOptions}
@@ -70,14 +70,13 @@ class ClickHouseLogger extends BaseLogger {
       interval: 10 * 1000,
       timeZone: 'Europe/Istanbul',
     }
-    
+
     this.opts = _.defaultsDeep(this.opts, defaultOptions)
     this.queue = []
     this.timer = null
     this.host = `${this.opts.url}:${this.opts.port}`
-    
   }
-  
+
   /**
    * Initialize logger.
    *
@@ -85,51 +84,51 @@ class ClickHouseLogger extends BaseLogger {
    */
   init(loggerFactory) {
     super.init(loggerFactory)
-    
+
     this.createDB()
       .then((res) => {
-        console.info(`Database ${this.opts.dbName} created successfully`, res);
+        console.info(`Database ${this.opts.dbName} created successfully`, res)
         this.createTable()
-          .then((res) => {
-            console.info(`Table ${this.opts.dbTableName} in db ${this.opts.dbName} created successfully`, res);
+          .then((r) => {
+            console.info(
+              `Table ${this.opts.dbTableName} in db ${this.opts.dbName} created successfully`,
+              r
+            )
           })
           .then(() => {
             this.createBufferTable().then()
           })
-          .catch(err => {
+          .catch((err) => {
             /* istanbul ignore next */
             // eslint-disable-next-line no-console
             console.warn(
               `Unable to create table ${this.opts.dbTableName} in database ${this.opts.dbName}. Error:${err.message}`,
-              err,
+              err
             )
           })
       })
-      .catch(err => {
+      .catch((err) => {
         /* istanbul ignore next */
         // eslint-disable-next-line no-console
-        console.warn(
-          `Unable to create database ${this.opts.dbName}. Error:${err.message}`,
-          err,
-        )
+        console.warn(`Unable to create database ${this.opts.dbName}. Error:${err.message}`, err)
       })
-    
+
     this.objectPrinter = this.opts.objectPrinter
       ? this.opts.objectPrinter
-      : o =>
-        inspect(o, {
-          showHidden: false,
-          depth: null,
-          colors: false,
-          breakLength: Number.POSITIVE_INFINITY,
-        })
-    
+      : (o) =>
+          inspect(o, {
+            showHidden: false,
+            depth: null,
+            colors: false,
+            breakLength: Number.POSITIVE_INFINITY,
+          })
+
     if (this.opts.interval > 0) {
       this.timer = setInterval(() => this.flush(), this.opts.interval)
       this.timer.unref()
     }
   }
-  
+
   /**
    * Stopping logger
    */
@@ -138,21 +137,21 @@ class ClickHouseLogger extends BaseLogger {
       clearInterval(this.timer)
       this.timer = null
     }
-    
+
     return this.flush()
   }
-  
+
   /**
    * Generate a new log handler.
    *
    * @param {object} bindings
    */
   getLogHandler(bindings) {
-    let level = bindings ? this.getLogLevel(bindings.mod) : null
+    const level = bindings ? this.getLogLevel(bindings.mod) : null
     if (!level) return null
-    
-    const printArgs = args => {
-      return args.map(p => {
+
+    const printArgs = (args) => {
+      return args.map((p) => {
         if (isObject(p) || Array.isArray(p)) return this.objectPrinter(p)
         return p
       })
@@ -162,7 +161,7 @@ class ClickHouseLogger extends BaseLogger {
     return (type, args) => {
       const typeIdx = BaseLogger.LEVELS.indexOf(type)
       if (typeIdx > levelIdx) return
-      
+
       this.queue.push({
         ts: Date.now(),
         level: type,
@@ -172,7 +171,7 @@ class ClickHouseLogger extends BaseLogger {
       if (!this.opts.interval) this.flush()
     }
   }
-  
+
   /**
    * Flush queued log entries to ClickHouseLogger.
    */
@@ -180,20 +179,24 @@ class ClickHouseLogger extends BaseLogger {
     if (this.queue.length > 0) {
       const rows = Array.from(this.queue)
       this.queue.length = 0
-      
-      const data = rows.map(row => JSON.stringify({
-        timestamp: row.ts,
-        date: Math.trunc(row.ts/1000),
-        level: row.level,
-        message: row.msg,
-        nodeID: row.bindings.nodeID,
-        namespace: row.bindings.ns,
-        service: row.bindings.svc,
-        version: row.bindings.ver ? String(row.bindings.ver) : '',
-        source: this.opts.source,
-        hostname: this.opts.hostname,
-      })).join('\n')
-      
+
+      const data = rows
+        .map((row) =>
+          JSON.stringify({
+            timestamp: row.ts,
+            date: Math.trunc(row.ts / 1000),
+            level: row.level,
+            message: row.msg,
+            nodeID: row.bindings.nodeID,
+            namespace: row.bindings.ns,
+            service: row.bindings.svc,
+            version: row.bindings.ver ? String(row.bindings.ver) : '',
+            source: this.opts.source,
+            hostname: this.opts.hostname,
+          })
+        )
+        .join('\n')
+
       return fetch(this.host, {
         method: 'POST',
         body: `INSERT INTO ${this.opts.dbTableName} FORMAT JSONEachRow ${data}`,
@@ -203,22 +206,19 @@ class ClickHouseLogger extends BaseLogger {
           'X-ClickHouse-Key': this.opts.dbPassword,
         },
       })
-        .then((/*res*/) => {
+        .then((/* res */) => {
           // console.info("Logs are uploaded to ClickHouse. Status: ", res.statusText);
         })
-        .catch(err => {
+        .catch((err) => {
           /* istanbul ignore next */
           // eslint-disable-next-line no-console
-          console.warn(
-            "Unable to upload logs to ClickHouse server. Error:" + err.message,
-            err
-          );
+          console.warn(`Unable to upload logs to ClickHouse server. Error:${err.message}`, err)
         })
     }
-    
+
     return this.broker.Promise.resolve()
   }
-  
+
   createDB() {
     const body = `CREATE DATABASE IF NOT EXISTS ${this.opts.dbName}`
     return fetch(this.host, {
@@ -230,7 +230,7 @@ class ClickHouseLogger extends BaseLogger {
       },
     })
   }
-  
+
   createTable() {
     const body = `CREATE TABLE IF NOT EXISTS ${this.opts.dbTableName} (
           timestamp DateTime64(3, ${this.opts.timeZone}) DEFAULT now(${this.opts.timeZone}),
@@ -257,6 +257,7 @@ class ClickHouseLogger extends BaseLogger {
       },
     })
   }
+
   createBufferTable() {
     const body = `CREATE TABLE IF NOT EXISTS ${this.opts.dbTableName}_buffer
       as ${this.opts.dbTableName}
@@ -271,7 +272,6 @@ class ClickHouseLogger extends BaseLogger {
       },
     })
   }
-  
 }
 
 module.exports = ClickHouseLogger
