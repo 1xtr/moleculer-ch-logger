@@ -16,6 +16,7 @@
  * @property {string} [hostname='hostname'] Hostname, default is machine hostname 'os.hostname()'
  * @property {Function} [objectPrinter] Callback function for object printer, default is 'util.inspect()'
  * @property {number} [interval=10000] Date uploading interval in milliseconds, default is 10000
+ * @property {string} [timeZone='Europe/Istanbul'] Time zone for save in database, default is 'Europe/Istanbul'
  */
 
 'use strict'
@@ -67,6 +68,7 @@ class ClickHouseLogger extends BaseLogger {
         })
       },
       interval: 10 * 1000,
+      timeZone: 'Europe/Istanbul',
     }
     
     this.opts = _.defaultsDeep(this.opts, defaultOptions)
@@ -91,6 +93,9 @@ class ClickHouseLogger extends BaseLogger {
           .then((res) => {
             console.info(`Table ${this.opts.dbTableName} in db ${this.opts.dbName} created successfully`, res);
           })
+          .then(() => {
+            this.createBufferTable().then()
+          })
           .catch(err => {
             /* istanbul ignore next */
             // eslint-disable-next-line no-console
@@ -108,7 +113,7 @@ class ClickHouseLogger extends BaseLogger {
           err,
         )
       })
-
+    
     this.objectPrinter = this.opts.objectPrinter
       ? this.opts.objectPrinter
       : o =>
@@ -177,7 +182,8 @@ class ClickHouseLogger extends BaseLogger {
       this.queue.length = 0
       
       const data = rows.map(row => JSON.stringify({
-        timestamp: Math.trunc(row.ts/1000),
+        timestamp: row.ts,
+        date: Math.trunc(row.ts/1000),
         level: row.level,
         message: row.msg,
         nodeID: row.bindings.nodeID,
@@ -198,13 +204,13 @@ class ClickHouseLogger extends BaseLogger {
         },
       })
         .then((/*res*/) => {
-          // console.info("Logs are uploaded to DataDog. Status: ", res.statusText);
+          // console.info("Logs are uploaded to ClickHouse. Status: ", res.statusText);
         })
         .catch(err => {
           /* istanbul ignore next */
           // eslint-disable-next-line no-console
           console.warn(
-            "Unable to upload logs to Datadog server. Error:" + err.message,
+            "Unable to upload logs to ClickHouse server. Error:" + err.message,
             err
           );
         })
@@ -212,7 +218,7 @@ class ClickHouseLogger extends BaseLogger {
     
     return this.broker.Promise.resolve()
   }
-
+  
   createDB() {
     const body = `CREATE DATABASE IF NOT EXISTS ${this.opts.dbName}`
     return fetch(this.host, {
@@ -227,7 +233,7 @@ class ClickHouseLogger extends BaseLogger {
   
   createTable() {
     const body = `CREATE TABLE IF NOT EXISTS ${this.opts.dbTableName} (
-          timestamp DateTime DEFAULT now(),
+          timestamp DateTime64(3, ${this.opts.timeZone}) DEFAULT now(${this.opts.timeZone}),
           level String,
           message String,
           nodeID String,
@@ -235,9 +241,10 @@ class ClickHouseLogger extends BaseLogger {
           service String,
           version String,
           source String,
-          hostname String)
+          hostname String
+          date Date DEFAULT today(${this.opts.timeZone}))
       ENGINE = MergeTree()
-      PARTITION BY timestamp
+      PARTITION BY date
       ORDER BY tuple()
       SETTINGS index_granularity = 8192;`
     return fetch(this.host, {
@@ -250,6 +257,21 @@ class ClickHouseLogger extends BaseLogger {
       },
     })
   }
+  createBufferTable() {
+    const body = `CREATE TABLE IF NOT EXISTS ${this.opts.dbTableName}_buffer
+      as ${this.opts.dbTableName}
+      ENGINE = **Buffer**(default, metrics, 16, 10, 100, 1000, 10000, 10000, 100000)`
+    return fetch(this.host, {
+      method: 'POST',
+      body,
+      headers: {
+        'X-ClickHouse-Database': this.opts.dbName,
+        'X-ClickHouse-User': this.opts.dbUser,
+        'X-ClickHouse-Key': this.opts.dbPassword,
+      },
+    })
+  }
+  
 }
 
 module.exports = ClickHouseLogger
