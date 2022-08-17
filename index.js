@@ -56,7 +56,7 @@ class ClickHouseLogger extends BaseLogger {
       dbUser: 'default',
       dbPassword: '',
       dbTableName: 'logs',
-      // use source like single TAG
+      // use source like TAG
       source: process.env.MOL_NODE_NAME || 'moleculer',
       hostname: hostname(),
       objectPrinter: (o) => {

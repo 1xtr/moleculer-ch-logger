@@ -37,7 +37,7 @@ const options = {
   dbUser: 'default',
   dbPassword: '',
   dbTableName: 'logs',
-  // use source like single TAG
+  // use source like TAG
   source: process.env.MOL_NODE_NAME || 'moleculer',
   hostname: hostname(),
   objectPrinter: (o) => {
@@ -49,5 +49,33 @@ const options = {
     })
   },
   interval: 10 * 1000,
+  timeZone: 'Europe/Istanbul',
 }
+```
+## Log table
+
+```js
+const query = `CREATE TABLE IF NOT EXISTS ${this.opts.dbTableName} (
+          timestamp DateTime64(3, ${this.opts.timeZone}) DEFAULT now(${this.opts.timeZone}),
+          level String,
+          message String,
+          nodeID String,
+          namespace String,
+          service String,
+          version String,
+          source String,
+          hostname String
+          date Date DEFAULT today(${this.opts.timeZone}))
+      ENGINE = MergeTree()
+      PARTITION BY date
+      ORDER BY tuple()
+      SETTINGS index_granularity = 8192;`
+```
+
+## Buffer
+
+```js
+const query = `CREATE TABLE IF NOT EXISTS ${this.opts.dbTableName}_buffer
+as ${this.opts.dbTableName}
+ENGINE = **Buffer**(default, metrics, 16, 10, 100, 1000, 10000, 10000, 100000)`
 ```
