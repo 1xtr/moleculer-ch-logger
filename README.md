@@ -55,8 +55,8 @@ const options = {
 ## Log table
 
 ```js
-const query = `CREATE TABLE IF NOT EXISTS ${this.opts.dbTableName} (
-          timestamp DateTime64(3, ${this.opts.timeZone}) DEFAULT now(${this.opts.timeZone}),
+const body = `CREATE TABLE IF NOT EXISTS ${this.opts.dbTableName} (
+          timestamp DateTime64(3, '${this.opts.timeZone}') DEFAULT now(),
           level String,
           message String,
           nodeID String,
@@ -64,8 +64,8 @@ const query = `CREATE TABLE IF NOT EXISTS ${this.opts.dbTableName} (
           service String,
           version String,
           source String,
-          hostname String
-          date Date DEFAULT today(${this.opts.timeZone}))
+          hostname String,
+          date Date DEFAULT today())
       ENGINE = MergeTree()
       PARTITION BY date
       ORDER BY tuple()
@@ -75,7 +75,7 @@ const query = `CREATE TABLE IF NOT EXISTS ${this.opts.dbTableName} (
 ## Buffer
 
 ```js
-const query = `CREATE TABLE IF NOT EXISTS ${this.opts.dbTableName}_buffer
-as ${this.opts.dbTableName}
-ENGINE = **Buffer**(default, metrics, 16, 10, 100, 1000, 10000, 10000, 100000)`
+const body = `CREATE TABLE IF NOT EXISTS ${this.opts.dbTableName}_buffer
+      as ${this.opts.dbTableName}
+      ENGINE = Buffer('${this.opts.dbName}', '${this.opts.dbTableName}', 16, 10, 100, 1000, 10000, 10000, 100000);`
 ```
