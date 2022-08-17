@@ -88,15 +88,28 @@ class ClickHouseLogger extends BaseLogger {
     this.createDB()
       .then((res) => {
         console.info(`Database ${this.opts.dbName} created successfully`, res)
+      })
+      .then(() => {
         this.createTable()
-          .then((r) => {
+          .then((res) => {
             console.info(
               `Table ${this.opts.dbTableName} in db ${this.opts.dbName} created successfully`,
-              r
+              res
             )
           })
           .then(() => {
-            this.createBufferTable().then()
+            this.createBufferTable()
+              .then((res) => {
+                console.info(`Buffer table ${this.opts.dbName}_buffer created successfully`, res)
+              })
+              .catch((err) => {
+                /* istanbul ignore next */
+                // eslint-disable-next-line no-console
+                console.warn(
+                  `Unable to create table ${this.opts.dbTableName}_buffer in database ${this.opts.dbName}. Error:${err.message}`,
+                  err
+                )
+              })
           })
           .catch((err) => {
             /* istanbul ignore next */
@@ -157,7 +170,7 @@ class ClickHouseLogger extends BaseLogger {
       })
     }
     const levelIdx = BaseLogger.LEVELS.indexOf(level)
-    
+
     return (type, args) => {
       const typeIdx = BaseLogger.LEVELS.indexOf(type)
       if (typeIdx > levelIdx) return
@@ -184,7 +197,7 @@ class ClickHouseLogger extends BaseLogger {
         .map((row) =>
           JSON.stringify({
             timestamp: row.ts,
-            date: Math.trunc(row.ts / 1000),
+            date: new Date(row.ts).toISOString().slice(0, 10),
             level: row.level,
             message: row.msg,
             nodeID: row.bindings.nodeID,
@@ -233,7 +246,7 @@ class ClickHouseLogger extends BaseLogger {
 
   createTable() {
     const body = `CREATE TABLE IF NOT EXISTS ${this.opts.dbTableName} (
-          timestamp DateTime64(3, ${this.opts.timeZone}) DEFAULT now(${this.opts.timeZone}),
+          timestamp DateTime64(3, '${this.opts.timeZone}') DEFAULT now(),
           level String,
           message String,
           nodeID String,
@@ -241,8 +254,8 @@ class ClickHouseLogger extends BaseLogger {
           service String,
           version String,
           source String,
-          hostname String
-          date Date DEFAULT today(${this.opts.timeZone}))
+          hostname String,
+          date Date DEFAULT today())
       ENGINE = MergeTree()
       PARTITION BY date
       ORDER BY tuple()
@@ -261,7 +274,7 @@ class ClickHouseLogger extends BaseLogger {
   createBufferTable() {
     const body = `CREATE TABLE IF NOT EXISTS ${this.opts.dbTableName}_buffer
       as ${this.opts.dbTableName}
-      ENGINE = **Buffer**(default, metrics, 16, 10, 100, 1000, 10000, 10000, 100000)`
+      ENGINE = Buffer('${this.opts.dbName}', '${this.opts.dbTableName}', 16, 10, 100, 1000, 10000, 10000, 100000);`
     return fetch(this.host, {
       method: 'POST',
       body,
