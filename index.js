@@ -199,7 +199,7 @@ class ClickHouseLogger extends BaseLogger {
             timestamp: row.ts,
             date: new Date(row.ts).toISOString().slice(0, 10),
             level: row.level,
-            message: row.msg,
+            message: JSON.stringify(row.msg),
             nodeID: row.bindings.nodeID,
             namespace: row.bindings.ns,
             service: row.bindings.svc,
