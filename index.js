@@ -24,12 +24,9 @@ require('isomorphic-fetch')
 const _ = require('lodash')
 const BaseLogger = require('moleculer').Loggers.Base
 const { hostname } = require('os')
-const { inspect } = require('util')
 
 fetch.Promise = Promise
-const isObject = function (o) {
-  return o !== null && typeof o === 'object' && !(o instanceof String)
-}
+const isObject = (o) => o !== null && typeof o === 'object' && !(o instanceof String)
 
 /**
  * ClickHouseLogger logger for Moleculer
@@ -59,14 +56,7 @@ class ClickHouseLogger extends BaseLogger {
       // use source like TAG
       source: process.env.MOL_NODE_NAME || 'moleculer',
       hostname: hostname(),
-      objectPrinter: (o) => {
-        return inspect(o, {
-          showHidden: false,
-          depth: null,
-          colors: false,
-          breakLength: Number.POSITIVE_INFINITY,
-        })
-      },
+      objectPrinter: null,
       interval: 10 * 1000,
       timeZone: 'Europe/Istanbul',
     }
@@ -128,13 +118,7 @@ class ClickHouseLogger extends BaseLogger {
 
     this.objectPrinter = this.opts.objectPrinter
       ? this.opts.objectPrinter
-      : (o) =>
-          inspect(o, {
-            showHidden: false,
-            depth: null,
-            colors: false,
-            breakLength: Number.POSITIVE_INFINITY,
-          })
+      : (o) => JSON.stringify(o)
 
     if (this.opts.interval > 0) {
       this.timer = setInterval(() => this.flush(), this.opts.interval)
@@ -162,9 +146,19 @@ class ClickHouseLogger extends BaseLogger {
   getLogHandler(bindings) {
     const level = bindings ? this.getLogLevel(bindings.mod) : null
     if (!level) return null
-
+  
+    let requestId = ''
+    let subdomain = ''
+    let caller = ''
+    
     const printArgs = (args) => {
       return args.map((p) => {
+        if (isObject(p) && p.requestID !== undefined) {
+          requestId = p.requestID
+          subdomain = p.subdomain
+          caller = p.caller
+          return this.objectPrinter(p)
+        }
         if (isObject(p) || Array.isArray(p)) return this.objectPrinter(p)
         return p
       })
@@ -174,11 +168,14 @@ class ClickHouseLogger extends BaseLogger {
     return (type, args) => {
       const typeIdx = BaseLogger.LEVELS.indexOf(type)
       if (typeIdx > levelIdx) return
-
+      
       this.queue.push({
         ts: Date.now(),
         level: type,
         msg: printArgs(args).join(' '),
+        requestId,
+        subdomain,
+        caller,
         bindings,
       })
       if (!this.opts.interval) this.flush()
@@ -197,9 +194,12 @@ class ClickHouseLogger extends BaseLogger {
         .map((row) =>
           JSON.stringify({
             timestamp: row.ts,
+            requestId: row.requestId,
+            subdomain: row.subdomain,
+            caller: row.caller,
             date: new Date(row.ts).toISOString().slice(0, 10),
             level: row.level,
-            message: JSON.stringify(row.msg),
+            message: row.msg,
             nodeID: row.bindings.nodeID,
             namespace: row.bindings.ns,
             service: row.bindings.svc,
@@ -247,6 +247,9 @@ class ClickHouseLogger extends BaseLogger {
   createTable() {
     const body = `CREATE TABLE IF NOT EXISTS ${this.opts.dbTableName} (
           timestamp DateTime64(3, '${this.opts.timeZone}') DEFAULT now(),
+          requestId String,
+          subdomain String,
+          caller String,
           level String,
           message String,
           nodeID String,
@@ -257,8 +260,9 @@ class ClickHouseLogger extends BaseLogger {
           hostname String,
           date Date DEFAULT today())
       ENGINE = MergeTree()
+      ORDER BY (toStartOfHour(timestamp), service, level, subdomain, requestId, timestamp)
+      PRIMARY KEY (toStartOfHour(timestamp), service, level, subdomain, requestId)
       PARTITION BY date
-      ORDER BY tuple()
       SETTINGS index_granularity = 8192;`
     return fetch(this.host, {
       method: 'POST',
