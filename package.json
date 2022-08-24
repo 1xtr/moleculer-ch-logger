@@ -1,10 +1,11 @@
 {
   "name": "@1xtr/moleculer-ch-logger",
-  "version": "1.0.9",
+  "version": "1.1.0",
   "description": "Custom MoleculerJS logger for send log to ClickHouse",
   "main": "index.js",
   "scripts": {
     "patch": "npm version patch",
+    "minor": "npm version minor",
     "lint": "eslint"
   },
   "repository": {
