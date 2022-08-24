@@ -40,14 +40,7 @@ const options = {
   // use source like TAG
   source: process.env.MOL_NODE_NAME || 'moleculer',
   hostname: hostname(),
-  objectPrinter: (o) => {
-    return inspect(o, {
-      showHidden: false,
-      depth: null,
-      colors: false,
-      breakLength: Number.POSITIVE_INFINITY,
-    })
-  },
+  objectPrinter: null,
   interval: 10 * 1000,
   timeZone: 'Europe/Istanbul',
 }
@@ -57,6 +50,9 @@ const options = {
 ```js
 const body = `CREATE TABLE IF NOT EXISTS ${this.opts.dbTableName} (
           timestamp DateTime64(3, '${this.opts.timeZone}') DEFAULT now(),
+          requestID String,
+          subdomain String,
+          caller String,
           level String,
           message String,
           nodeID String,
@@ -67,8 +63,9 @@ const body = `CREATE TABLE IF NOT EXISTS ${this.opts.dbTableName} (
           hostname String,
           date Date DEFAULT today())
       ENGINE = MergeTree()
+      ORDER BY (toStartOfHour(timestamp), service, level, subdomain, requestID, timestamp)
+      PRIMARY KEY (toStartOfHour(timestamp), service, level, subdomain, requestID)
       PARTITION BY date
-      ORDER BY tuple()
       SETTINGS index_granularity = 8192;`
 ```
 
@@ -79,3 +76,75 @@ const body = `CREATE TABLE IF NOT EXISTS ${this.opts.dbTableName}_buffer
       as ${this.opts.dbTableName}
       ENGINE = Buffer('${this.opts.dbName}', '${this.opts.dbTableName}', 16, 10, 100, 1000, 10000, 10000, 100000);`
 ```
+
+## Logger mixin
+<details>
+<summary>That mixin I use for logging</summary>
+
+```js
+const defaultContext = {
+  requestID: '',
+  meta: { customer: { subdomain: '' } },
+}
+
+module.exports = {
+  name: 'logger',
+  methods: {
+    log(data, ctx = defaultContext) {
+      this.sendLog(data, ctx, 'info')
+    },
+    error(title, error, ctx = defaultContext) {
+      this.logger.error({
+        title,
+        subdomain: ctx.meta.customer ? ctx.meta.customer.subdomain : '',
+        caller: ctx.caller || '',
+        error,
+        requestID: ctx.requestID || '',
+      })
+    },
+    err(error, ctx = defaultContext) {
+      this.logger.error({
+        title: error.message,
+        subdomain: ctx.meta.customer ? ctx.meta.customer.subdomain : '',
+        caller: ctx.caller || '',
+        error,
+        requestID: ctx.requestID || '',
+      })
+    },
+    warn(data, ctx = defaultContext) {
+      this.sendLog(data, ctx, 'warn')
+    },
+    sendLog(data, ctx, logType) {
+      if (!ctx.meta.customer) {
+        ctx.meta.customer = { subdomain: '' }
+      }
+
+      if (typeof data === 'string') {
+        return this.logger[logType]({
+          requestID: ctx.requestID || '',
+          subdomain: ctx.meta.customer.subdomain || '',
+          caller: ctx.caller || '',
+          title: data,
+        })
+      }
+
+      if (typeof data !== 'object') {
+        return this.logger[logType]({
+          requestID: ctx.requestID || '',
+          subdomain: ctx.meta.customer.subdomain || '',
+          caller: ctx.caller || '',
+          data,
+        })
+      }
+
+      return this.logger[logType]({
+        requestID: ctx.requestID || '',
+        subdomain: ctx.meta.customer.subdomain || '',
+        caller: ctx.caller || '',
+        ...data,
+      })
+    },
+  },
+}
+```
+</details>
