@@ -1,6 +1,6 @@
 {
   "name": "@1xtr/moleculer-ch-logger",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "Custom MoleculerJS logger for send log to ClickHouse",
   "main": "index.js",
   "scripts": {
