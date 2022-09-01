@@ -17,14 +17,21 @@
  * @property {Function} [objectPrinter] Callback function for object printer, default is 'util.inspect()'
  * @property {number} [interval=10000] Date uploading interval in milliseconds, default is 10000
  * @property {string} [timeZone='Europe/Istanbul'] Time zone for save in database, default is 'Europe/Istanbul'
+ * @property {string} [tableTTL='date + INTERVAL 1 DAY RECOMPRESS CODEC(ZSTD(3))'] TTL for table in ClickHouse, default is Recompress after 1 day with CODEC(ZSTD(3))
+ * @property {boolean} [useBuffer=false] Use buffer table for reading and writing data, default false
  */
 
 'use strict'
 require('isomorphic-fetch')
 const _ = require('lodash')
+const dayjs = require('dayjs')
+const utc = require('dayjs/plugin/utc')
+const timezone = require('dayjs/plugin/timezone')
 const BaseLogger = require('moleculer').Loggers.Base
 const { hostname } = require('os')
 
+dayjs.extend(utc)
+dayjs.extend(timezone)
 fetch.Promise = Promise
 const isObject = (o) => o !== null && typeof o === 'object' && !(o instanceof String)
 
@@ -59,6 +66,8 @@ class ClickHouseLogger extends BaseLogger {
       objectPrinter: null,
       interval: 10 * 1000,
       timeZone: 'Europe/Istanbul',
+      tableTTL: 'date + INTERVAL 1 DAY RECOMPRESS CODEC(ZSTD(3))',
+      useBuffer: false,
     }
 
     this.opts = _.defaultsDeep(this.opts, defaultOptions)
@@ -74,7 +83,16 @@ class ClickHouseLogger extends BaseLogger {
    */
   init(loggerFactory) {
     super.init(loggerFactory)
-
+  
+    try {
+      dayjs.extend(utc)
+      dayjs.extend(timezone)
+    } catch (e) {
+      throw new Error(
+        "The 'dayjs' package is missing! Please install it with 'npm install dayjs --save' command."
+      )
+    }
+    
     this.createDB()
       .then((res) => {
         console.info(`Database ${this.opts.dbName} created successfully`, res)
@@ -88,6 +106,7 @@ class ClickHouseLogger extends BaseLogger {
             )
           })
           .then(() => {
+            if (!this.opts.useBuffer) return
             this.createBufferTable()
               .then((res) => {
                 console.info(`Buffer table ${this.opts.dbName}_buffer created successfully`, res)
@@ -134,7 +153,6 @@ class ClickHouseLogger extends BaseLogger {
       clearInterval(this.timer)
       this.timer = null
     }
-
     return this.flush()
   }
 
@@ -146,11 +164,11 @@ class ClickHouseLogger extends BaseLogger {
   getLogHandler(bindings) {
     const level = bindings ? this.getLogLevel(bindings.mod) : null
     if (!level) return null
-  
+
     let requestID = ''
     let subdomain = ''
     let caller = ''
-    
+
     const printArgs = (args) => {
       return args.map((p) => {
         if (isObject(p) && p.requestID !== undefined) {
@@ -169,7 +187,7 @@ class ClickHouseLogger extends BaseLogger {
     return (type, args) => {
       const typeIdx = BaseLogger.LEVELS.indexOf(type)
       if (typeIdx > levelIdx) return
-      
+
       this.queue.push({
         ts: Date.now(),
         level: type,
@@ -198,7 +216,7 @@ class ClickHouseLogger extends BaseLogger {
             requestID: row.requestID,
             subdomain: row.subdomain,
             caller: row.caller,
-            date: new Date(row.ts).toISOString().slice(0, 10),
+            date: dayjs(row.ts).tz(this.opts.timeZone).format('YYYY-MM-DD'),
             level: row.level,
             message: row.msg,
             nodeID: row.bindings.nodeID,
@@ -213,7 +231,7 @@ class ClickHouseLogger extends BaseLogger {
 
       return fetch(this.host, {
         method: 'POST',
-        body: `INSERT INTO ${this.opts.dbTableName} FORMAT JSONEachRow ${data}`,
+        body: `INSERT INTO ${this.opts.useBuffer ? `${this.opts.dbTableName}_buffer` : this.opts.dbTableName} FORMAT JSONEachRow ${data}`,
         headers: {
           'X-ClickHouse-Database': this.opts.dbName,
           'X-ClickHouse-User': this.opts.dbUser,
@@ -224,7 +242,6 @@ class ClickHouseLogger extends BaseLogger {
           // console.info("Logs are uploaded to ClickHouse. Status: ", res.statusText);
         })
         .catch((err) => {
-          /* istanbul ignore next */
           // eslint-disable-next-line no-console
           console.warn(`Unable to upload logs to ClickHouse server. Error:${err.message}`, err)
         })
@@ -234,10 +251,9 @@ class ClickHouseLogger extends BaseLogger {
   }
 
   createDB() {
-    const body = `CREATE DATABASE IF NOT EXISTS ${this.opts.dbName}`
     return fetch(this.host, {
       method: 'POST',
-      body,
+      body: `CREATE DATABASE IF NOT EXISTS ${this.opts.dbName}`,
       headers: {
         'X-ClickHouse-User': this.opts.dbUser,
         'X-ClickHouse-Key': this.opts.dbPassword,
@@ -263,7 +279,8 @@ class ClickHouseLogger extends BaseLogger {
       ENGINE = MergeTree()
       ORDER BY (toStartOfHour(timestamp), service, level, subdomain, requestID, timestamp)
       PRIMARY KEY (toStartOfHour(timestamp), service, level, subdomain, requestID)
-      PARTITION BY date
+      PARTITION BY (date, toStartOfDay(timestamp))
+      TTL ${this.opts.tableTTL}
       SETTINGS index_granularity = 8192;`
     return fetch(this.host, {
       method: 'POST',

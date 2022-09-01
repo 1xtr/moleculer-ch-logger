@@ -30,7 +30,7 @@ module.exports = {
 # Default options
 
 ```js
-const options = {
+const defaultOptions = {
   url: 'http://localhost',
   port: 8123,
   dbName: 'default',
@@ -43,6 +43,8 @@ const options = {
   objectPrinter: null,
   interval: 10 * 1000,
   timeZone: 'Europe/Istanbul',
+  tableTTL: 'date + INTERVAL 1 DAY RECOMPRESS CODEC(ZSTD(3))',
+  useBuffer: false,
 }
 ```
 ## Log table
@@ -65,7 +67,8 @@ const body = `CREATE TABLE IF NOT EXISTS ${this.opts.dbTableName} (
       ENGINE = MergeTree()
       ORDER BY (toStartOfHour(timestamp), service, level, subdomain, requestID, timestamp)
       PRIMARY KEY (toStartOfHour(timestamp), service, level, subdomain, requestID)
-      PARTITION BY date
+      PARTITION BY (date, toStartOfDay(timestamp))
+      TTL ${this.opts.tableTTL}
       SETTINGS index_granularity = 8192;`
 ```
 
@@ -79,7 +82,7 @@ const body = `CREATE TABLE IF NOT EXISTS ${this.opts.dbTableName}_buffer
 
 ## Logger mixin
 <details>
-<summary>That mixin I use for logging</summary>
+<summary>That mixin I use for logging (Click for open)</summary>
 
 ```js
 const defaultContext = {
@@ -148,3 +151,7 @@ module.exports = {
 }
 ```
 </details>
+
+## Documentation
+
+For more details read [docs](https://github.com/1xtr/moleculer-ch-logger/tree/main/docs)
