@@ -197,6 +197,9 @@ class ClickHouseLogger extends BaseLogger {
         caller,
         bindings,
       })
+      requestID = ''
+      subdomain = ''
+      caller = ''
       if (!this.opts.interval) this.flush()
     }
   }
